@@ -94,24 +94,13 @@ class TextStreamer(BaseStreamer):
 
         # Add the new token to the cache and decodes the entire thing.
         self.token_cache.extend(value.tolist())
-        text = self.tokenizer.decode(self.token_cache, **self.decode_kwargs)
-
-        # After the symbol for a new line, we flush the cache.
-        if text.endswith("\n"):
-            printable_text = text[self.print_len :]
-            self.token_cache = []
-            self.print_len = 0
-        # If the last token is a CJK character, we print the characters.
-        elif len(text) > 0 and self._is_chinese_char(ord(text[-1])):
-            printable_text = text[self.print_len :]
-            self.print_len += len(printable_text)
-        # Otherwise, prints until the last space char (simple heuristic to avoid printing incomplete words,
-        # which may change with the subsequent token -- there are probably smarter ways to do this!)
-        else:
-            printable_text = text[self.print_len : text.rfind(" ") + 1]
-            self.print_len += len(printable_text)
-
+        printable_text = self.tokenizer.decode(self.token_cache, **self.decode_kwargs)
+        if len(printable_text) == 0:
+            return
+        if self._is_special_char(ord(printable_text[-1])):
+            return
         self.on_finalized_text(printable_text)
+        self.token_cache = []
 
     def end(self):
         """Flushes any remaining cache and prints a newline to stdout."""
@@ -131,30 +120,14 @@ class TextStreamer(BaseStreamer):
         """Prints the new text to stdout. If the stream is ending, also prints a newline."""
         print(text, flush=True, end="" if not stream_end else None)
 
-    def _is_chinese_char(self, cp):
-        """Checks whether CP is the codepoint of a CJK character."""
-        # This defines a "chinese character" as anything in the CJK Unicode block:
-        #   https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block)
+    def _is_special_char(self, cp):
+        """Checks whether CP is the codepoint of a special character."""
+        # This defines a "chinese character" as anything in the special Unicode block:
+        #   https://en.wikipedia.org/wiki/Specials_(Unicode_block)
         #
-        # Note that the CJK Unicode block is NOT all Japanese and Korean characters,
-        # despite its name. The modern Korean Hangul alphabet is a different block,
-        # as is Japanese Hiragana and Katakana. Those alphabets are used to write
-        # space-separated words, so they are not treated specially and handled
-        # like the all of the other languages.
-        if (
-            (cp >= 0x4E00 and cp <= 0x9FFF)
-            or (cp >= 0x3400 and cp <= 0x4DBF)  #
-            or (cp >= 0x20000 and cp <= 0x2A6DF)  #
-            or (cp >= 0x2A700 and cp <= 0x2B73F)  #
-            or (cp >= 0x2B740 and cp <= 0x2B81F)  #
-            or (cp >= 0x2B820 and cp <= 0x2CEAF)  #
-            or (cp >= 0xF900 and cp <= 0xFAFF)
-            or (cp >= 0x2F800 and cp <= 0x2FA1F)  #
-        ):  #
+        if 0xFFF0 <= cp <= 0xFFFF:
             return True
-
         return False
-
 
 class TextIteratorStreamer(TextStreamer):
     """
